@@ -32,7 +32,7 @@ If the user has permission, it deletes the following:
 6. Prune Members
 7. Start Kicking/Banning Members
 8. Delete Channels, Roles
-9. Ban Kicked Members
+9. Go back and Ban Kicked Members
 # Running the Script
 ## Executable
 The executable was made with Nuitka, a python compiler. No IDE required to run it this way. <br/>
