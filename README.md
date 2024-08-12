@@ -1,7 +1,7 @@
 ### Basic Information
 Strategic Raid Self-bot Script for Discord that tries to minimize alerting the moderators using various means. <br/>
 Built using the dev build of discord.py-self. <br/>
-The exe file is a nuitka build that doesn't require installing any dependencies or using an IDE.
+The exe file is a Nuitka build that doesn't require installing any dependencies or using an IDE.
 # Features
 ### Permission Based Deletion
 If the user has permission, it deletes the following:
@@ -33,3 +33,12 @@ If the user has permission, it deletes the following:
 7. Start Kicking/Banning Members
 8. Delete Channels, Roles
 9. Ban Kicked Members
+# Running the Script
+## Executable
+The executable was made with Nuitka, a python compiler. No IDE required to run it this way. <br/>
+It bevomes very easy to run multiple instances of the script using this.
+## via an IDE
+This code will not work with vanilla discord.py, you need to install discord.py-self. <br/>
+I would recommend installing the development branch of discord.py-self, I don't think it will work with the normal branch currently. <br/>
+Run this command to install the development branch: 
+> pip install git+https://github.com/dolfies/discord.py-self@master#egg=discord.py-self[voice,speed] 
