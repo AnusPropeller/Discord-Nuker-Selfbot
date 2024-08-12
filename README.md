@@ -23,3 +23,13 @@ If the user has permission, it deletes the following:
 ### User Silencing
 - Given manage channel permissions, the bot mass edits all channels to deny read message and send message permissions.
 - Given manage guild permissions, the bot adds an automod rule that blocks all messages, and times the sender out for a day.
+### Order of Operations
+1. Scrape guild members to a list
+2. Deny channel permissions
+3. Delete Automod Rules
+4. Create Automod rule blocking messages
+5. Delete Stickers, Emojis, Templates, Invites, Webhooks
+6. Prune Members
+7. Start Kicking/Banning Members
+8. Delete Channels, Roles
+9. Ban Kicked Members
