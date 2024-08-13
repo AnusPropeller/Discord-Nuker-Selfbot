@@ -26,9 +26,9 @@ dyno_prefix = input("Input the dyno bot prefix: ").strip()
 print(f"Using Dyno bot commands with prefix: {dyno_prefix}")
 ratelimit_question = input("Wait between commands? [Y/n]: ")
 print("HIGHLY recommend using a json file for getting members: see my other github project for a scraper.")
-print("It can take hours to fully scrape a server for its members. I would recommend scrapping it fully before running "
+print("It takes hours to fully scrape a big server for its members. I recommend scrapping it fully before running "
       "this bot.")
-fetch_question = input("Get members from json file? [Y/n]: ")
+fetch_question = input("Get members from a .json file? [Y/n]: ")
 avoid_ratelimit = False
 fetch_json = False
 if ratelimit_question.lower().startswith("y"): avoid_ratelimit = True
