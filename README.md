@@ -29,10 +29,10 @@ If the user has permission, it deletes the following:
 2. Deny channel permissions
 3. Delete Automod Rules
 4. Create Automod rule blocking messages
-5. Delete Stickers, Emojis, Templates, Invites, Webhooks
+5. Delete Stickers, Emojis, Invites, Templates, Webhooks
 6. Prune Members
 7. Start Kicking/Banning Members
-8. Delete Channels, Roles
+8. Delete Roles, Channels
 9. Go back and Ban Kicked Members
 10. Sync any Templates to current server status
 # Running the Script
