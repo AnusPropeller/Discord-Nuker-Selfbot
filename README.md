@@ -34,6 +34,7 @@ If the user has permission, it deletes the following:
 7. Start Kicking/Banning Members
 8. Delete Channels, Roles
 9. Go back and Ban Kicked Members
+10. Sync any Templates to current server status
 # Running the Script
 ## Executable
 The executable was made with Nuitka, a python compiler. No IDE required to run it this way. <br/>
