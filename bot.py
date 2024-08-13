@@ -4,9 +4,12 @@ from datetime import timedelta
 import discord
 import sys
 import re
+import os
+import json
 from discord.ext import commands
 
 bot = commands.Bot(command_prefix="?", self_bot=True)
+script_dir = os.path.dirname(os.path.abspath(__file__))
 
 if sys.platform == 'win32':  # weird fix for a bug I ran into
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -22,8 +25,14 @@ if not auto_delete_logs_channel_id.strip().isnumeric():
 dyno_prefix = input("Input the dyno bot prefix: ").strip()
 print(f"Using Dyno bot commands with prefix: {dyno_prefix}")
 ratelimit_question = input("Wait between commands? [Y/n]: ")
+print("HIGHLY recommend using a txt file for getting members: see my other github project for a scraper.")
+print("It can take hours to fully scrape a server for its members. I would recommend scrapping it fully before running "
+      "this bot.")
+fetch_question = input("Get members from json file? [Y/n]: ")
 avoid_ratelimit = False
+fetch_json = False
 if ratelimit_question.lower().startswith("y"): avoid_ratelimit = True
+if fetch_question.lower().startswith("y"): fetch_json = True
 
 
 async def parse_input(user_input: str):
@@ -82,61 +91,153 @@ async def nuke(guild: discord.Guild):
     except discord.HTTPException:
         print("Failed to Fetch Guild Channels: HTTPException.")
 
+    guild_members = []
+    if fetch_json:
+        if not os.path.exists(f"{guild.id}.json"):
+            print(f"Missing the json file: /{guild.id}.json")
+            quit()
+        with open(f"{guild.id}.json", 'r') as file:
+            data = json.load(file)
+        guild_members = data['user-ids']
+        print(f"Found the member list file: {len(guild_members)} IDs found!")
+
     #  ----  Fetching every user's ID  ----  #
 
-    print("Trying to fetch all guild member's ids. This may take a while.")
-    print("Without kick/ban or manage role permissions it will have to scrape the sidebar.")
-    print("In large severs the sidebar does not show offline members, so it might not fetch all members.")
+    if not fetch_json:
+        print("Trying to fetch all guild member's ids.")
+        print("Without kick/ban or manage role permissions it will have to scrape the sidebar.")
+        print("In large severs the sidebar does not show offline members, so it might not fetch all members.")
+        print("This may take a while.")
 
-    good_channels_for_member_scraping = []
-    channel_ratings = {}
-    if channels:
-        for x in channels:
-            if not x.permissions_for(member).read_messages: continue
-            roles_seeing_channel_count = 0
-            for role in guild.roles:
-                if x.permissions_for(role).read_messages: roles_seeing_channel_count += 1
-            channel_ratings[f'{x.id}'] = roles_seeing_channel_count
+        good_channels_for_member_scraping = []
+        channel_ratings = {}
+        if channels:
+            for x in channels:
+                if not x.permissions_for(member).read_messages: continue
+                roles_seeing_channel_count = 0
+                for role in guild.roles:
+                    if x.permissions_for(role).read_messages: roles_seeing_channel_count += 1
+                channel_ratings[f'{x.id}'] = roles_seeing_channel_count
 
-    sorted_channels = sorted(channel_ratings.items(), key=lambda item: item[1], reverse=True)
+        sorted_channels = sorted(channel_ratings.items(), key=lambda item: item[1], reverse=True)
 
-    # Append the top 5 channels to the list
-    for channel_id, count in sorted_channels[:5]:
-        append_channel = await guild.fetch_channel(channel_id)
-        good_channels_for_member_scraping.append(append_channel)
+        # Append the top 5 channels to the list
+        for channel_id, count in sorted_channels[:5]:
+            append_channel = await guild.fetch_channel(channel_id)
+            good_channels_for_member_scraping.append(append_channel)
 
-    guild_members = []
-    if guild_perms.kick_members or guild_perms.ban_members or guild_perms.manage_roles or is_admin:
-        if len(good_channels_for_member_scraping) > 1:
-            members = await guild.fetch_members(force_scraping=False, channels=good_channels_for_member_scraping)
-            for x in members:
-                if x.id == bot.user.id:
-                    members.remove(x)
-                    continue
-                if x.status is not discord.Status.offline:
+        print(f"is guild {guild.large}")
+        if guild_perms.kick_members or guild_perms.ban_members or guild_perms.manage_roles or is_admin:
+            if len(good_channels_for_member_scraping) > 1:
+                members = await guild.fetch_members(force_scraping=False, channels=good_channels_for_member_scraping)
+                for x in members:
+                    if x.id == bot.user.id:
+                        members.remove(x)
+                        continue
+                    if x.status is not discord.Status.offline:
+                        guild_members.append(x)
+                        members.remove(x)
+                for x in members:
                     guild_members.append(x)
                     members.remove(x)
-            for x in members:
-                guild_members.append(x)
-                members.remove(x)
+            else:
+                print("No Valid Channels found for scraping.")
         else:
-            print("No Valid Channels found for scraping.")
-    else:
-        if len(good_channels_for_member_scraping) > 1:
-            members = await guild.fetch_members(channels=good_channels_for_member_scraping, force_scraping=True,
-                                                delay=.1)
-            for x in members:
-                if x.id == bot.user.id:
-                    members.remove(x)
-                    continue
-                if x.status is not discord.Status.offline:
-                    guild_members.append(x)
-                    members.remove(x)
-            for x in members:
-                guild_members.append(x)
-                members.remove(x)
-        else:
-            print("No Valid Channels found for scraping.")
+            if guild.member_count < 250:
+                if len(good_channels_for_member_scraping) > 1:
+                    members = await guild.fetch_members(channels=good_channels_for_member_scraping, force_scraping=True,
+                                                        delay=.1)
+                    for x in members:
+                        if x.id == bot.user.id:
+                            members.remove(x)
+                            continue
+                        if x.status is not discord.Status.offline:
+                            guild_members.append(x)
+                            members.remove(x)
+                    for x in members:
+                        guild_members.append(x)
+                        members.remove(x)
+                else:
+                    print("No Valid Channels found for scraping.")
+            else:
+                print("Guild is >250 members, the script will now scrape message history, checking if accounts that sent "
+                      "messages share this guild with you. This will probably take a while")
+                if len(good_channels_for_member_scraping) > 0:
+                    members = await guild.fetch_members(channels=good_channels_for_member_scraping, force_scraping=True,
+                                                        delay=.1, cache=True)
+                    for x in members:
+                        if x.id == bot.user.id:
+                            members.remove(x)
+                            continue
+                        if x.status is not discord.Status.offline:
+                            guild_members.append(x)
+                            members.remove(x)
+                    for x in members:
+                        guild_members.append(x)
+                        members.remove(x)
+                channels_to_scrape = []
+                new_channels = await guild.fetch_channels()
+                tep = []
+                for x in new_channels:
+                    try:
+                        tip = await guild.fetch_channel(x.id)
+                        print(f"Fetching channel {tip.name}")
+                        tep.append(tip)
+                    except discord.Forbidden:
+                        print(f"Failed to fetch channel {x.name}: Forbidden")
+
+                print(f"Fetched guild channels length: {len(tep)}")
+                if len(tep) > len(channels): channels = tep
+
+                for channel_curr in tep:
+                    if channel_curr.type is discord.ChannelType.category: continue
+                    if channel_curr.type is discord.ChannelType.forum:
+                        if channel_curr.permissions_for(guild.me).read_messages:
+                            try:
+                                async for thread in channel_curr.archived_threads(limit=None):
+                                    channels_to_scrape.append(thread)
+                            except discord.Forbidden:
+                                print("Failed to check channel threads: Forbidden.")
+                            except discord.HTTPException:
+                                print("Failed to check channel threads: HTTPException")
+                            for thread in channel_curr.threads:
+                                channels_to_scrape.append(thread)
+                    elif channel_curr.type is discord.ChannelType.text:
+                        if channel_curr.permissions_for(guild.me).read_messages:
+                            channels_to_scrape.append(channel_curr)
+                            try:
+                                async for thread in channel_curr.archived_threads(limit=None):
+                                    channels_to_scrape.append(thread)
+                            except discord.Forbidden:
+                                print("Failed to check channel threads: Forbidden.")
+                            except discord.HTTPException:
+                                print("Failed to check channel threads: HTTPException")
+                            for thread in channel_curr.threads:
+                                channels_to_scrape.append(thread)
+                    elif channel_curr.type is discord.ChannelType.stage_voice or channel_curr.type is discord.ChannelType.voice:
+                        if channel_curr.permissions_for(guild.me).read_messages:
+                            channels_to_scrape.append(channel_curr)
+                print(f"channels to scrape: {len(channels_to_scrape)}")
+                not_in_guild = []
+                for x in channels_to_scrape:
+                    print(f"Scraping channel {x.name} for members.")
+                    async for message in x.history(limit=None):
+                        if message.author in guild_members: continue
+                        if message.author.id in not_in_guild: continue
+                        try:
+                            message_user = await guild.fetch_member(message.author.id)
+                            if message_user in guild_members:
+                                print("late continue")
+                                continue
+                            print(f"New member added: {message_user.name} | Count: {len(guild_members) + 1}")
+                            guild_members.append(message_user)
+                        except discord.NotFound:
+                            not_in_guild.append(message.author.id)
+                        except discord.Forbidden:
+                            print("Failed to fetch user: Forbidden.")
+                        except discord.HTTPException:
+                            print("Failed to fetch user: HTTPException.")
+        print(f"Members scraped: {len(guild_members)}")
 
     #  ----  Channel Permission Denial  ----  #
 
@@ -372,41 +473,113 @@ async def nuke(guild: discord.Guild):
     possible_channel = None
     if guild_perms.kick_members and not guild_perms.ban_members and not is_admin:
         print("User just has kick perms.")
-        for x in guild_members:
+        for u in guild_members:
+            if fetch_json:
+                try:
+                    x = await guild.fetch_member(u)
+                except discord.NotFound:
+                    guild_members.remove(u)
+                    continue
+                except discord.Forbidden:
+                    guild_members.remove(u)
+                    continue
+                except discord.HTTPException:
+                    guild_members.remove(u)
+                    continue
+                except Exception as e:
+                    print(f"Failed to find user from json: {e}")
+                    guild_members.remove(u)
+                    continue
+            else: x = u
             if x.top_role < top_role or guild.owner_id == bot.user.id:
                 try:
                     await x.kick()
-                    guild_members.remove(x)
+                    if fetch_json:
+                        guild_members.remove(u)
+                    else:
+                        guild_members.remove(x)
                     if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(3)
                 except discord.Forbidden:
                     print(f"Failed to kick member {x.name}, id: {x.id}")
                 except Exception as e:
                     print(e)
             else:
-                guild_members.remove(x)
+                if fetch_json:
+                    guild_members.remove(u)
+                else:
+                    guild_members.remove(x)
     elif guild_perms.ban_members and not guild_perms.kick_members and not is_admin:
         print("User just has ban perms.")
-        for x in guild_members:
+        for u in guild_members:
+            if fetch_json:
+                try:
+                    x = await guild.fetch_member(u)
+                except discord.NotFound:
+                    guild_members.remove(u)
+                    continue
+                except discord.Forbidden:
+                    guild_members.remove(u)
+                    continue
+                except discord.HTTPException:
+                    guild_members.remove(u)
+                    continue
+                except Exception as e:
+                    print(f"Failed to find user from json: {e}")
+                    guild_members.remove(u)
+                    continue
+            else: x = u
             if x.top_role < top_role or guild.owner_id == bot.user.id:
                 try:
                     await x.ban()
-                    guild_members.remove(x)
+                    if fetch_json:
+                        guild_members.remove(u)
+                    else:
+                        guild_members.remove(x)
                     if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(3)
                 except discord.NotFound:
                     print(f"Failed to ban member: The requested user was not found: {x.name} id: {x.id}")
-                    guild_members.remove(x)
+                    if fetch_json:
+                        guild_members.remove(u)
+                    else:
+                        guild_members.remove(x)
                 except discord.Forbidden:
                     print(f"Failed to ban member {x.name}, id: {x.id}: Forbidden")
-                    guild_members.remove(x)
+                    if fetch_json:
+                        guild_members.remove(u)
+                    else:
+                        guild_members.remove(x)
                 except Exception as e:
-                    guild_members.remove(x)
+                    if fetch_json:
+                        guild_members.remove(u)
+                    else:
+                        guild_members.remove(x)
                     print(e)
             else:
-                guild_members.remove(x)
+                if fetch_json:
+                    guild_members.remove(u)
+                else:
+                    guild_members.remove(x)
     elif guild_perms.ban_members and guild_perms.kick_members or is_admin:
         print("Use has both ban and kick perms. Or has admin.")
         ban_turn = True
-        for x in guild_members:
+        for u in guild_members:
+            if fetch_json:
+                try:
+                    x = await guild.fetch_member(u)
+                except discord.NotFound:
+                    guild_members.remove(u)
+                    continue
+                except discord.Forbidden:
+                    guild_members.remove(u)
+                    continue
+                except discord.HTTPException:
+                    guild_members.remove(u)
+                    continue
+                except Exception as e:
+                    print(f"Failed to find user from json: {e}")
+                    guild_members.remove(u)
+                    continue
+            else: x = u
             if ban_turn:
                 print(f"trying to ban: {x.name}")
             else:
@@ -416,32 +589,56 @@ async def nuke(guild: discord.Guild):
                     ban_turn = False
                     try:
                         await x.ban()
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                         if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(1.5)
                     except discord.NotFound:
                         print(f"Failed to ban member: The requested user was not found: {x.name} id: {x.id}")
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                     except discord.Forbidden:
                         print(f"Failed to ban member {x.name}, id: {x.id}")
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                     except Exception as e:
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                         print(e)
                 else:
                     ban_turn = True
                     kicked_members.append(x)  # assumes that the user will be banned, regardless if the kick works
                     try:
                         await x.kick()
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                         if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(1.5)
                     except discord.Forbidden:
                         print(f"Failed to kick member {x.name}, id: {x.id}")
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                     except Exception as e:
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                         print(e)
             else:
-                guild_members.remove(x)
+                if fetch_json:
+                    guild_members.remove(u)
+                else:
+                    guild_members.remove(x)
     elif not guild_perms.kick_members and not guild_perms.ban_members and not is_admin:
         print("User has no kick or ban perms. And no admin.")
         print("Trying to kick/ban everyone with a bot.")
@@ -449,7 +646,7 @@ async def nuke(guild: discord.Guild):
         #  Trying to find the lowest channel, with a preference for voice channels
         if channels:
             for x in channels:
-                if x.type is discord.ChannelType.text: continue
+                if x.type is discord.ChannelType.category or x.type is discord.ChannelType.forum: continue
                 if not x.permissions_for(member).use_application_commands or not x.permissions_for(member).read_messages \
                         or not x.permissions_for(member).send_messages:
                     continue
@@ -481,18 +678,56 @@ async def nuke(guild: discord.Guild):
                 print("Dyno delete role perms")
                 delete_role_command = x
 
-        for x in guild_members:
-            print(f"{len(guild_members)} iterating over: {x.name}")
+        for u in guild_members:
+            if fetch_json:
+                try:
+                    x = await guild.fetch_member(u)
+                except discord.NotFound:
+                    guild_members.remove(u)
+                    continue
+                except discord.Forbidden:
+                    guild_members.remove(u)
+                    continue
+                except discord.HTTPException:
+                    guild_members.remove(u)
+                    continue
+                except Exception as e:
+                    print(f"Failed to find user from json: {e}")
+                    guild_members.remove(u)
+                    continue
+            else: x = u
+
+            print(f"{len(guild_members)} iterating over: {u}")
             if ban_command:
                 if ban_command.application.name.lower() == x.name.lower():
-                    guild_members.remove(x)
+                    if fetch_json: guild_members.remove(u)
+                    else: guild_members.remove(x)
                     continue
             elif kick_command:
                 if kick_command.application.name.lower() == x.name.lower():
-                    guild_members.remove(x)
+                    if fetch_json: guild_members.remove(u)
+                    else: guild_members.remove(x)
                     continue
             if ban_command:
-                for x in guild_members:
+                for uy in guild_members:
+                    if fetch_json:
+                        try:
+                            x = await guild.fetch_member(uy)
+                        except discord.NotFound:
+                            guild_members.remove(uy)
+                            continue
+                        except discord.Forbidden:
+                            guild_members.remove(uy)
+                            continue
+                        except discord.HTTPException:
+                            guild_members.remove(uy)
+                            continue
+                        except Exception as e:
+                            print(f"Failed to find user from json: {e}")
+                            guild_members.remove(u)
+                            continue
+                    else:
+                        x = uy
                     if x.top_role < top_role or guild.owner_id == bot.user.id:
                         try:
                             print(f"Trying to ban {x.name} via Dyno bot.")
@@ -506,7 +741,10 @@ async def nuke(guild: discord.Guild):
                             else:
                                 await possible_channel.send(content=f"{dyno_prefix}ban {x.id}", delete_after=1)
                                 await delete_bot_message(channel=possible_channel)
-                            guild_members.remove(x)
+                            if fetch_json:
+                                guild_members.remove(uy)
+                            else:
+                                guild_members.remove(x)
                             if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
                         except discord.ext.commands.errors.CommandNotFound:
                             print("Ban Slash command not found, opting for plaintext command.")
@@ -514,16 +752,25 @@ async def nuke(guild: discord.Guild):
                             break
                         except discord.NotFound:
                             print(f"Failed to dyno ban member: The requested user was not found: {x.name} id: {x.id}")
-                            guild_members.remove(x)
+                            if fetch_json:
+                                guild_members.remove(uy)
+                            else:
+                                guild_members.remove(x)
                         except discord.Forbidden:
                             print(f"Failed to dyno ban member {x.name}, id: {x.id}")
                             guild_members.remove(x)
                         except Exception as e:
                             if x in guild_members:
-                                guild_members.remove(x)
+                                if fetch_json:
+                                    guild_members.remove(uy)
+                                else:
+                                    guild_members.remove(x)
                             print(e)
                     else:
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(uy)
+                        else:
+                            guild_members.remove(x)
             elif kick_command:
                 if x.top_role < top_role or guild.owner_id == bot.user.id:
                     try:
@@ -534,7 +781,10 @@ async def nuke(guild: discord.Guild):
                         else:
                             await possible_channel.send(content=f"{dyno_prefix}kick {x.id}", delete_after=1)
                             await delete_bot_message(channel=possible_channel)
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                         if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
                     except discord.ext.commands.errors.CommandNotFound:
                         print("Kick Slash command not found, opting for plaintext command.")
@@ -542,18 +792,48 @@ async def nuke(guild: discord.Guild):
                         break
                     except discord.NotFound:
                         print(f"Failed to dyno kick member: The requested user was not found: {x.name} id: {x.id}")
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                     except discord.Forbidden:
                         print(f"Failed to dyno kick member {x.name}, id: {x.id}")
-                        guild_members.remove(x)
+                        if fetch_json:
+                            guild_members.remove(u)
+                        else:
+                            guild_members.remove(x)
                     except Exception as e:
                         if x in guild_members:
-                            guild_members.remove(x)
+                            if fetch_json:
+                                guild_members.remove(u)
+                            else:
+                                guild_members.remove(x)
                         print(e)
                 else:
-                    guild_members.remove(x)
+                    if fetch_json:
+                        guild_members.remove(u)
+                    else:
+                        guild_members.remove(x)
         if plain_text_ban:
-            for x in guild_members:
+            for ua in guild_members:
+                if fetch_json:
+                    try:
+                        x = await guild.fetch_member(ua)
+                    except discord.NotFound:
+                        guild_members.remove(ua)
+                        continue
+                    except discord.Forbidden:
+                        guild_members.remove(ua)
+                        continue
+                    except discord.HTTPException:
+                        guild_members.remove(ua)
+                        continue
+                    except Exception as e:
+                        print(f"Failed to find user from json: {e}")
+                        guild_members.remove(ua)
+                        continue
+                else:
+                    x = ua
                 if x.top_role < top_role or guild.owner_id == bot.user.id:
                     try:
                         print(f"Trying to ban {x.name} via Dyno bot.")
@@ -585,7 +865,25 @@ async def nuke(guild: discord.Guild):
                 else:
                     guild_members.remove(x)
         if plain_text_kick:
-            for x in guild_members:
+            for ua in guild_members:
+                if fetch_json:
+                    try:
+                        x = await guild.fetch_member(ua)
+                    except discord.NotFound:
+                        guild_members.remove(ua)
+                        continue
+                    except discord.Forbidden:
+                        guild_members.remove(ua)
+                        continue
+                    except discord.HTTPException:
+                        guild_members.remove(ua)
+                        continue
+                    except Exception as e:
+                        print(f"Failed to find user from json: {e}")
+                        guild_members.remove(ua)
+                        continue
+                else:
+                    x = ua
                 if x.top_role < top_role or guild.owner_id == bot.user.id:
                     try:
                         print(f"Trying to kick {x.name} via Dyno bot.")
@@ -730,8 +1028,8 @@ async def nuke(guild: discord.Guild):
                 except discord.HTTPException:
                     print("Failed to Sync Template: HTTPException.")
 
-
     print("End of Nuke.")
+    print("Restart if the bot missed any members.")
 
 
 @bot.event  # Login event run
