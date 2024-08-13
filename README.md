@@ -1,4 +1,5 @@
 ### Basic Information
+Has a hard time fetching all users. Will have to be restarted repeatedly to kick/ban all users in a large server. <br/>
 Self-bot for nuking discord servers. <br/>
 Tries to use Dyno commands if it has no perms. <br/>
 Tries to remain under the radar for as long as possible. <br/>
