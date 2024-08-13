@@ -745,7 +745,7 @@ async def nuke(guild: discord.Guild):
                                 guild_members.remove(uy)
                             else:
                                 guild_members.remove(x)
-                            if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
+                            await asyncio.sleep(3)
                         except discord.ext.commands.errors.CommandNotFound:
                             print("Ban Slash command not found, opting for plaintext command.")
                             plain_text_ban = True
@@ -785,7 +785,7 @@ async def nuke(guild: discord.Guild):
                             guild_members.remove(u)
                         else:
                             guild_members.remove(x)
-                        if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
+                        await asyncio.sleep(4)
                     except discord.ext.commands.errors.CommandNotFound:
                         print("Kick Slash command not found, opting for plaintext command.")
                         plain_text_kick = True
@@ -848,7 +848,7 @@ async def nuke(guild: discord.Guild):
                             await possible_channel.send(content=f"{dyno_prefix}ban {x.id}", delete_after=1)
                             await delete_bot_message(channel=possible_channel)
                         guild_members.remove(x)
-                        if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
+                        await asyncio.sleep(3)
                     except discord.ext.commands.errors.CommandNotFound:
                         print("Ban Slash command not found, opting for plaintext command.")
                         plain_text_ban = True
@@ -894,7 +894,7 @@ async def nuke(guild: discord.Guild):
                             await possible_channel.send(content=f"{dyno_prefix}kick {x.id}", delete_after=1)
                             await delete_bot_message(channel=possible_channel)
                         guild_members.remove(x)
-                        if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
+                        await asyncio.sleep(4)
                     except discord.ext.commands.errors.CommandNotFound:
                         print("Kick Slash command not found, opting for plaintext command.")
                         plain_text_kick = True
