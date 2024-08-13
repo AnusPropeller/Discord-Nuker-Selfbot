@@ -6,6 +6,8 @@ Tries to use Dyno commands if it has no perms. <br/>
 Tries to remain under the radar for as long as possible. <br/>
 Built using the dev build of discord.py-self. <br/>
 The zip file is a Nuitka build that doesn't require installing any dependencies or using an IDE.
+## Using a json file list.
+To use a .json file as a list for members, drag it into the same directory. Follow the same json pattern as in my member scraper bot repo.
 # Features
 ### Permission Based Deletion
 If the user has permission, it deletes the following:
@@ -39,7 +41,6 @@ If the user has permission, it deletes the following:
 9. Go back and Ban Kicked Members
 10. Sync any Templates to current server status
 # Running the Script
-To use a .json file, drag it into the same directory. Follow the same json pattern as in my member scraper bot repo.
 ## Zip File
 Download the zip file. <br/>
 Extract the files. <br/>
