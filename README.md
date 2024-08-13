@@ -27,7 +27,7 @@ If the user has permission, it deletes the following:
 - Given manage channel permissions, the bot mass edits all channels to deny read message and send message permissions.
 - Given manage guild permissions, the bot adds an automod rule that blocks all messages, and times the sender out for a day.
 ### Order of Operations
-1. Scrape guild members to a list
+1. Scrape guild members to a list / open a json file with user ids.
 2. Deny channel permissions
 3. Delete Automod Rules
 4. Create Automod rule blocking messages
@@ -38,6 +38,7 @@ If the user has permission, it deletes the following:
 9. Go back and Ban Kicked Members
 10. Sync any Templates to current server status
 # Running the Script
+To use a .json file, drag it into the same directory. Follow the same json pattern as in my member scraper bot repo.
 ## Zip File
 Download the zip file. <br/>
 Extract the files. <br/>
