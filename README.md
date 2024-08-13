@@ -1,6 +1,6 @@
 ### Basic Information
 Self-bot for nuking discord servers. <br/>
-Tries to using Dyno commands if it has no perms. <br/>
+Tries to use Dyno commands if it has no perms. <br/>
 Tries to remain under the radar for as long as possible. <br/>
 Built using the dev build of discord.py-self. <br/>
 The zip file is a Nuitka build that doesn't require installing any dependencies or using an IDE.
