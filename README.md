@@ -36,9 +36,10 @@ If the user has permission, it deletes the following:
 9. Go back and Ban Kicked Members
 10. Sync any Templates to current server status
 # Running the Script
-## Executable
-The executable was made with Nuitka, a python compiler. No IDE required to run it this way. <br/>
-It bevomes very easy to run multiple instances of the script using this.
+## Zip File
+Download the zip file. <br/>
+Extract the files. <br/>
+Run /bot.dist/bot.exe
 ## via an IDE
 This code will not work with vanilla discord.py, you need to install discord.py-self. <br/>
 I would recommend installing the development branch of discord.py-self, I don't think it will work with the normal branch currently. <br/>
