@@ -20,12 +20,12 @@ if not guild_nuke_id.strip().isnumeric():
     quit()
 auto_delete_logs_channel_id = input("ID of log channel to delete new messages (type a letter if there is none): ")
 if not auto_delete_logs_channel_id.strip().isnumeric():
-    print("Log channel id isn't valid, will assume there is none.")
+    print("Log channel ID isn't valid. Moving forward assuming there is none.")
     auto_delete_logs_channel_id = None
 dyno_prefix = input("Input the dyno bot prefix: ").strip()
 print(f"Using Dyno bot commands with prefix: {dyno_prefix}")
 ratelimit_question = input("Wait between commands? [Y/n]: ")
-print("HIGHLY recommend using a txt file for getting members: see my other github project for a scraper.")
+print("HIGHLY recommend using a json file for getting members: see my other github project for a scraper.")
 print("It can take hours to fully scrape a server for its members. I would recommend scrapping it fully before running "
       "this bot.")
 fetch_question = input("Get members from json file? [Y/n]: ")
