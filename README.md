@@ -1,8 +1,9 @@
 ### Basic Information
-Strategic Raid Self-bot Script for Discord that tries to minimize alerting the moderators using various means. <br/>
-Tries to use Dyno-bot commands to kick, ban, and delete channels, if it has no perms. <br/>
+Self-bot for nuking discord servers. <br/>
+Tries to using Dyno commands if it has no perms. <br/>
+Tries to remain under the radar for as long as possible. <br/>
 Built using the dev build of discord.py-self. <br/>
-The exe file is a Nuitka build that doesn't require installing any dependencies or using an IDE.
+The zip file is a Nuitka build that doesn't require installing any dependencies or using an IDE.
 # Features
 ### Permission Based Deletion
 If the user has permission, it deletes the following:
