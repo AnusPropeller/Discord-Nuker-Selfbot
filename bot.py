@@ -20,6 +20,7 @@ if not guild_nuke_id.strip().isnumeric():
 auto_delete_logs_channel_id = input("ID of log channel to delete new messages (type a letter if there is none): ")
 if not auto_delete_logs_channel_id.strip().isnumeric():
     print("Log channel id isn't valid, will assume there is none.")
+    auto_delete_logs_channel_id = None
 dyno_prefix = input("Input the dyno bot prefix: ").strip()
 print(f"Using Dyno bot commands with prefix: {dyno_prefix}")
 
@@ -557,6 +558,7 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
+    if not auto_delete_logs_channel_id: return
     if not message.author.bot or message.channel.id != int(auto_delete_logs_channel_id.strip()): return
     try:
         if message.channel.permissions_for(message.guild.me).manage_messages:
