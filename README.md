@@ -44,6 +44,5 @@ Extract the files. <br/>
 Run /bot.dist/bot.exe
 ## via an IDE
 This code will not work with vanilla discord.py, you need to install discord.py-self. <br/>
-I would recommend installing the development branch of discord.py-self, I don't think it will work with the normal branch currently. <br/>
-Run this command to install the development branch: 
+Run this command to install the discord.py-self branch: 
 > pip install git+https://github.com/dolfies/discord.py-self@master#egg=discord.py-self[voice,speed] 
