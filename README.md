@@ -1,5 +1,6 @@
 ### Basic Information
-Has a hard time fetching all users. Will have to be restarted repeatedly to kick/ban all users in a large server. <br/>
+Takes a long time to scrape members before starting, use my other repo to scrape members first. <br/>
+Using this script to scrape members takes about 25 minutes per 100k messages in the server. <br/>
 Self-bot for nuking discord servers. <br/>
 Tries to use Dyno commands if it has no perms. <br/>
 Tries to remain under the radar for as long as possible. <br/>
